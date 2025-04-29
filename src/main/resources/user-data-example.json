@@ -1,0 +1,33 @@
+{
+//  "created-timestamp" : 12312321344,
+  "user": {
+    "id" : "ID",
+
+    "sent": [
+      {
+        "msg_id": "1",
+        "receiver": "RECEIVER_ID_1",
+        "data": "DATA"
+      },
+      {
+        "msg_id": "3",
+        "receiver": "RECEIVER_ID_2",
+        "data": "DATA"
+      }
+    ],
+
+    "received": [
+      {
+        "msg_id": "2",
+        "sender": "SENDER_ID_1",
+        "data": "DATA"
+      },
+      {
+        "msg_id": "4",
+        "sender": "SENDER_ID_2",
+        "data": "DATA"
+      }
+    ]
+
+  }
+}
