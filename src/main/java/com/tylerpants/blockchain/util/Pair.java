@@ -1,5 +1,8 @@
 package com.tylerpants.blockchain.util;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Objects;
 
 public class Pair<A, B> {
@@ -8,7 +11,8 @@ public class Pair<A, B> {
 
     private B b;
 
-    public Pair(A a, B b) {
+    @JsonCreator
+    public Pair(@JsonProperty("a") A a, @JsonProperty("b") B b) {
         this.a = a;
         this.b = b;
     }

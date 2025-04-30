@@ -2,13 +2,16 @@ package com.tylerpants.blockchain;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tylerpants.blockchain.ECDSA.Message;
 import com.tylerpants.blockchain.ECDSA.Point;
 import com.tylerpants.blockchain.ECDSA.SignatureManager;
+import com.tylerpants.blockchain.util.Pair;
 import com.tylerpants.blockchain.util.Utils;
 
 
 import java.io.File;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
@@ -27,10 +30,7 @@ public class CmdManager {
     private static String lastHash;
     private static Scanner scanner;
     private static Block currentBlock;
-
-    private static int counter;
     private static List<Block> blockChain;
-    private static String address;
 
     public static void init() {
         scanner = new Scanner(System.in);
@@ -38,14 +38,14 @@ public class CmdManager {
         String privateKey = new AccountManager().init();
         Point publicKeyPoint = signatureManager.generatePublicKey(privateKey);
 
-        String uncompressedPK = signatureManager.uncompressedPublicKey(publicKeyPoint);
-        System.out.println("[TEST] Uncompressed Public Key: " + uncompressedPK);
+        String publicKey = signatureManager.uncompressedPublicKey(publicKeyPoint);
+        System.out.println("[TEST] Uncompressed Public Key / Address: " + publicKey);
 
         String compressedPublicKey = signatureManager.compressedPublicKey(publicKeyPoint);
         System.out.println("[TEST] Compressed Public Key " + compressedPublicKey);
 
-        address = Bench32Address.generateAddress(uncompressedPK);
-        System.out.println("[TEST] Address: " + address);
+//        address = Bench32Address.generateAddress(uncompressedPK);
+//        System.out.println("[TEST] Address: " + address);
 
         System.out.println("Welcome to Demo Blockchain (v. 1.0 SNAPSHOT)\n"+ HELP_TEXT);
 
@@ -55,11 +55,6 @@ public class CmdManager {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        // ????????????????????
-        for (int i = 0; i < blockChain.size(); i++) {
-            blockChain.get(i).setNumber(i);
-        }
-        counter = blockChain.size();
 
         lastHash = blockChain.get(blockChain.size()-1).getHash();
         currentBlock = new Block(lastHash, new ArrayList<>(3));
@@ -78,12 +73,12 @@ public class CmdManager {
                         System.out.println("A Maximum block capacity has been reached!\nPlease commit this block and create a new one.");
                     }
                     else {
-                        System.out.println("Enter recipient ID");
-                        String recipientId = scanner.nextLine();
+                        System.out.println("Enter recipient address");
+                        String recipientPK = scanner.nextLine();
 
                         System.out.println("Enter data to send");
                         String data = scanner.nextLine();
-                        createOperation(address, recipientId, data);
+                        createOperation(publicKey, privateKey, recipientPK, data);
 
                         System.out.println("DONE!");
                     }
@@ -91,7 +86,7 @@ public class CmdManager {
                 }
                 case "b" : {
                     commitBlock();
-                    System.out.println("Block #" + counter + " committed!");
+                    System.out.println("Block committed!");
                     break;
                 }
                 case "ll" : {
@@ -110,14 +105,17 @@ public class CmdManager {
 
     }
 
-    private static void createOperation(String senderId, String recipientId, String data) {
-        Operation operation = new Operation(senderId, recipientId, data);
+    private static void createOperation(String publicKey, String privateKey, String recipientPK, String data) {
+        String message_hash = Utils.sha256(data);
+        Pair<BigInteger, BigInteger> signature = signatureManager.signMessage(new Message(message_hash), privateKey);
+        Operation operation = new Operation(publicKey, recipientPK, data, signature);
 
         currentBlock.addOperation(operation);
     }
 
     private static void commitBlock() {
-        currentBlock.setNumber(++counter);
+        System.out.println("Started mining block...");
+        currentBlock.mineBlock();
         blockChain.add(currentBlock);
 
         Block newBlock = new Block(lastHash, new ArrayList<>(3));
@@ -135,13 +133,14 @@ public class CmdManager {
     private static void print() {
         for (Block block : blockChain) {
             System.out.println("-------------------------------------------------------------------------");
-            System.out.println("| Block #" + block.getNumber());
             System.out.println("| Hash: " + block.getHash());
+            System.out.println("| Previous hash: " + block.getPrevHash());
             System.out.println("| Timestamp: " + block.getTimestamp());
             System.out.println("| Operations: ");
             for (Operation o : block.getOperationList()) {
                 System.out.println("|   " + o);
             }
+            System.out.println("| Nonce: " + block.getNonce());
         }
     }
 }

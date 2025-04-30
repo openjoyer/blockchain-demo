@@ -3,47 +3,56 @@ package com.tylerpants.blockchain;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tylerpants.blockchain.util.Pair;
+import com.tylerpants.blockchain.util.Utils;
 import lombok.Getter;
 
 import java.math.BigInteger;
-import java.util.List;
+import java.util.Date;
 
 @Getter
 public class Operation {
-    private static int counter;
-    private final int id;
+    private final String hash;
     private final String sender;
     private final String recipient;
-
+    private final long timestamp;
     private final String data;
-
-    private Pair<BigInteger, BigInteger> signature;
+    private final Pair<BigInteger, BigInteger> signature;
 
     @JsonCreator
     public Operation(
-            @JsonProperty("id") int id,
+            @JsonProperty("hash") String hash,
             @JsonProperty("sender") String sender,
             @JsonProperty("recipient") String recipient,
+            @JsonProperty("timestamp") long timestamp,
             @JsonProperty("data") String data,
-            @JsonProperty("signature")List<String> signatureList) {
-        this.id = id;
+            @JsonProperty("signature")Pair<String, String> signature) {
+        this.hash = hash;
         this.recipient = recipient;
         this.sender = sender;
+        this.timestamp = timestamp;
         this.data = data;
-        this.signature = new Pair<>(new BigInteger(signatureList.get(0)), new BigInteger(signatureList.get(1)));
+        this.signature = new Pair<>(new BigInteger(signature.getA()), new BigInteger(signature.getB()));
     }
 
     @Override
     public String toString() {
-        return "#" + id + "  " + sender + " -> " + recipient + ", data: " + data +
+        return hash + " | " + timestamp + " | " + sender + " -> " + recipient + ", data: " + data +
                 "\nSignature: " + signature;
     }
 
-    public Operation(String sender, String recipient, String data) {
-        this.id = ++counter;
+    public Operation(String sender, String recipient, String data, Pair<BigInteger, BigInteger> signature) {
         this.sender = sender;
         this.recipient = recipient;
         this.data = data;
+        this.signature = signature;
+
+        this.hash = calculateHash();
+        this.timestamp = new Date().getTime();
+    }
+
+    private String calculateHash() {
+        String s = sender + recipient + timestamp + data + signature.toString();
+        return Utils.sha256(s);
     }
 
 }
