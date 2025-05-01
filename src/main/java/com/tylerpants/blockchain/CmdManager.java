@@ -44,9 +44,6 @@ public class CmdManager {
         String compressedPublicKey = signatureManager.compressedPublicKey(publicKeyPoint);
         System.out.println("[TEST] Compressed Public Key " + compressedPublicKey);
 
-//        address = Bench32Address.generateAddress(uncompressedPK);
-//        System.out.println("[TEST] Address: " + address);
-
         System.out.println("Welcome to Demo Blockchain (v. 1.0 SNAPSHOT)\n"+ HELP_TEXT);
 
         try {

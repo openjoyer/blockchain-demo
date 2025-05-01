@@ -34,12 +34,6 @@ public class Operation {
         this.signature = new Pair<>(new BigInteger(signature.getA()), new BigInteger(signature.getB()));
     }
 
-    @Override
-    public String toString() {
-        return hash + " | " + timestamp + " | " + sender + " -> " + recipient + ", data: " + data +
-                "\nSignature: " + signature;
-    }
-
     public Operation(String sender, String recipient, String data, Pair<BigInteger, BigInteger> signature) {
         this.sender = sender;
         this.recipient = recipient;
@@ -53,6 +47,11 @@ public class Operation {
     private String calculateHash() {
         String s = sender + recipient + timestamp + data + signature.toString();
         return Utils.sha256(s);
+    }
+
+    @Override
+    public String toString() {
+        return hash;
     }
 
 }
