@@ -15,8 +15,8 @@ public class PeerRecord {
     private byte[] ip;        // 4 байт (IPv4/IPv6)
     private int port;         // 0-65535
     private long timestamp;   // Unix time
-    private int score;        // -1=забанен, 0=новый, >0=надежный
-    private String source;    // "dns", "file", "incoming"
+    private int score;        // -1 = забанен, 0 = новый, >0 = надежный
+    private String source;    // "dns", "file", "incoming", "hardcoded"
 
     public InetAddress getAddress() {
         try {
@@ -29,12 +29,11 @@ public class PeerRecord {
     @SneakyThrows
     @Override
     public String toString() {
-        return "PeerRecord{" +
-                "ip=" + InetAddress.getByAddress(ip).getHostAddress() +
-                ", port=" + port +
+        return "{" + InetAddress.getByAddress(ip).getHostAddress() +
+                ":" + port +
                 ", timestamp=" + timestamp +
                 ", score=" + score +
                 ", source='" + source + '\'' +
-                '}';
+                "}";
     }
 }

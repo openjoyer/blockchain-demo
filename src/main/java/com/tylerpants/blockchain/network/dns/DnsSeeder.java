@@ -6,6 +6,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+
+/**
+ * НЕРЕАЛИЗОВАННЫЙ ПАРСЕР DNS-СЕМЯН ДЛЯ BOOTSTRAP ПОДКЛЮЧЕНИЯ К ПИРАМ
+ * ДЛЯ РЕАЛИЗАЦИИ НУЖНО НАПИСТАЬ DNS СЕРВЕР И АРЕНДОВАТЬ ДОМЕН (?)
+ */
 public class DnsSeeder {
     private static final String[] MY_SEEDS = {
             "mybitcoinseed.example.com",

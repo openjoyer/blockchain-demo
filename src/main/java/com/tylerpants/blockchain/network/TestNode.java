@@ -30,7 +30,7 @@ public class TestNode {
 
     private static final String NETWORK_MAGIC = "f9beb4d9";
     private static final int MAX_PEERS = 30;
-    private static final int MIN_PEERS = 1;
+    private static final int MIN_PEERS = 3;
     private static final int DEFAULT_PORT = 8333;
 
     public TestNode(int nodeId, String host, int port) {
@@ -115,7 +115,7 @@ public class TestNode {
     }
 
     private void cleanStalePeers() {
-        peerManager.getBestPeers(Integer.MAX_VALUE).stream()
+        peerManager.discoverPeers(Integer.MAX_VALUE).stream()
                 .filter(p -> System.currentTimeMillis() - p.getTimestamp() > 30_000_000) // > 30 дней
                 .forEach(p -> peerManager.removePeer(
                         p.getAddress(), // Нужно добавить метод getAddress() в PeerRecord
@@ -186,8 +186,6 @@ public class TestNode {
         if (connectedPeers.size() < MIN_PEERS) {
             connectToKnownPeers();
         }
-
-
     }
 
     private boolean isSelf(PeerAddress addr) {
@@ -206,7 +204,7 @@ public class TestNode {
     }
 
     private void connectToKnownPeers() {
-        getNodesFromFile().stream()
+        getPeersList().stream()
                 .filter(addr -> !isSelf(addr) && !isAlreadyConnected(addr))
                 .filter(addr -> {
                     PeerInfo failed = failedPeers.get(addr);
@@ -214,30 +212,21 @@ public class TestNode {
                 })
                 .limit(MAX_PEERS - connectedPeers.size())
                 .forEach(this::connectToPeer);
-//        getBootstrapNodes().stream()
-//                .filter(addr -> !isSelf(addr) && !isAlreadyConnected(addr))
-//                .filter(addr -> {
-//                    PeerInfo failed = failedPeers.get(addr);
-//                    return failed == null || failed.canAttemptReconnect();
-//                })
-//                .limit(MAX_PEERS - connectedPeers.size())
-//                .forEach(this::connectToPeer);
     }
 
-    private List<PeerAddress> getNodesFromFile() {
-        List<PeerRecord> peers = peerManager.getBestPeers(3);
-        System.out.println(peers);
-        List<PeerAddress> t = peers.stream().map(p -> {
+    private List<PeerAddress> getPeersList() {
+        List<PeerRecord> peers = peerManager.discoverPeers(10);
+        System.out.println("[LOG] Discovered peers: " + peers);
+        return peers.stream().map(p -> {
             try {
-                String host = InetAddress.getByAddress(p.getIp()).getHostAddress();
-                int port = p.getPort();
-                return new PeerAddress(host, port);
+                String host1 = InetAddress.getByAddress(p.getIp()).getHostAddress();
+                int port1 = p.getPort();
+                return new PeerAddress(host1, port1);
             } catch (UnknownHostException e) {
                 throw new RuntimeException(e);
             }
 
         }).toList();
-        return t;
     }
 
     private void connectToPeer(PeerAddress addr) {
@@ -363,7 +352,7 @@ public class TestNode {
 
     // Вспомогательные методы --------------------------------------------------
 
-    public boolean verifyMessage(byte[] fullMessage) {
+    private boolean verifyMessage(byte[] fullMessage) {
         if (fullMessage.length < 24) {
             return false;
         }
@@ -550,15 +539,15 @@ public class TestNode {
 //        Runtime.getRuntime().addShutdownHook(new Thread(node::shutdown));
 
 
-        TestNode node1 = new TestNode(1, "0.0.0.0", 8333);
-        TestNode node2 = new TestNode(2, "0.0.0.0", 8334);
-
+        TestNode node1 = new TestNode(1, "192.168.68.105", 8333);
+//        TestNode node2 = new TestNode(2, "0.0.0.0", 8334);
+//
         node1.start();
-        node2.start();
-
+//        node2.start();
+//
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             node1.shutdown();
-            node2.shutdown();
+//            node2.shutdown();
         }));
     }
 }

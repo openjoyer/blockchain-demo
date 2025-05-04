@@ -21,55 +21,43 @@ public class PeerManager {
     private static final String PATH = "src/main/resources/peers.dat";
 
     private static final List<InetSocketAddress> HARDCODED_PEERS = Arrays.asList(
-            new InetSocketAddress("203.0.113.1", 8333),  // Ваша нода 1
-            new InetSocketAddress("203.0.113.2", 8333),  // Ваша нода 2
-            new InetSocketAddress("198.51.100.5", 8333)  // Резервная нода
+//            new InetSocketAddress("203.0.113.1", 8333),  // нода 1
+//            new InetSocketAddress("203.0.113.2", 8333),  // нода 2
+//            new InetSocketAddress("198.51.100.5", 8333)  // Резервная нода
+            new InetSocketAddress("192.168.68.117", 8333)
     );
-
-    private final DnsSeeder dnsSeeder = new DnsSeeder();
-
 
     public PeerManager(String dataDir) throws IOException {
         this.peersFile = Paths.get(dataDir, "peers.dat");
+
+        saveHardcodedPeers();
         loadPeers();
         startAutoSaver();
     }
 
     public PeerManager() throws IOException {
         this.peersFile = Paths.get(PATH);
+
         loadPeers();
         startAutoSaver();
     }
 
-    public void loadHardcodedPeers() {
-        HARDCODED_PEERS.forEach(peer -> {
-            addPeer(peer.getAddress(), peer.getPort(), "hardcoded");
-        });
-    }
 
-//    public void loadPeersFromFile() throws IOException {
-//        Path file = Paths.get("config/peers.txt");
-//        Files.readAllLines(file).forEach(line -> {
-//            String[] parts = line.split(":");
-//            addPeer(parts[0], Integer.parseInt(parts[1]), "file");
-//        });
-//    }
-
-    public List<InetAddress> discoverDnsSeeds() {
-        return dnsSeeder.queryDnsSeeds();
-    }
-    public List<PeerRecord> discoverPeers() {
+    // Точка входа для получения списка пиров
+    public List<PeerRecord> discoverPeers(int limit) {
         List<PeerRecord> peers = new ArrayList<>();
 
-//        // 1. Сначала hardcoded пиры
-//        peers.addAll(HARDCODED_PEERS);
+        // 1. Сначала hardcoded пиры
+        peers.addAll(HARDCODED_PEERS.stream()
+                .map(p -> new PeerRecord(p.getAddress().getAddress(), p.getPort(), System.currentTimeMillis(), 100, "hardcoded"))
+                .toList());
 
-        // 3. Последние рабочие из peers.dat
+        // 2. Последние рабочие из peers.dat
         peers.addAll(getBestPeers(10));
 
         return peers.stream()
                 .distinct()
-                .limit(10)  // Не более 10 адресов
+                .limit(limit)
                 .collect(Collectors.toList());
     }
 
@@ -82,6 +70,9 @@ public class PeerManager {
         }
     }
 
+    private void saveHardcodedPeers() {
+        HARDCODED_PEERS.forEach(peer -> addPeer(peer.getAddress(), peer.getPort(), "hardcoded"));
+    }
 
     private void loadPeers() throws IOException {
         lock.writeLock().lock();
@@ -108,7 +99,6 @@ public class PeerManager {
 
                 String key = getPeerKey(ip, port);
                 PeerRecord peerRecord = new PeerRecord(ip, port, timestamp, score, "file");
-//                System.out.println(peerRecord);
                 peers.put(key, peerRecord);
             }
         } finally {
@@ -140,6 +130,7 @@ public class PeerManager {
             buffer.putInt(1); // Версия
             buffer.putInt(peers.size());
 
+            saveHardcodedPeers();
             // Записи
             peers.values().forEach(peer -> {
                 buffer.put(peer.getIp());
@@ -168,8 +159,10 @@ public class PeerManager {
                     0, // Начальный рейтинг
                     source
             );
+            if (source.equals("hardcoded")) {
+                peer.setScore(100);
+            }
             peers.put(key, peer);
-//            System.out.println("peers.dat -> added peer " + key);
             return true;
         } finally {
             lock.writeLock().unlock();
@@ -184,7 +177,6 @@ public class PeerManager {
             PeerRecord peer = peers.get(key);
             if (peer != null) {
                 peer.setScore(Math.max(-1, peer.getScore() + delta));
-//                System.out.println("peers.dat -> updated score "+ peer.getScore());
                 peer.setTimestamp(System.currentTimeMillis());
             }
         } finally {
@@ -204,25 +196,15 @@ public class PeerManager {
     }
 
     // Получение списка лучших пиров
-    public List<PeerRecord> getBestPeers(int limit) {
+    private List<PeerRecord> getBestPeers(int limit) {
         lock.readLock().lock();
         try {
             return peers.values().stream()
-                    .filter(p -> p.getScore() >= 0) // Исключаем забаненных
+                    .filter(p -> p.getScore() >= 0)   // Исключаем забаненных
+                    .filter(p -> !p.getSource().equals("hardcoded"))   // Исключаем hadcoded адреса
                     .sorted(Comparator.comparingInt(PeerRecord::getScore).reversed())
                     .limit(limit)
                     .collect(Collectors.toList());
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-
-    // Все пиры
-    public List<PeerRecord> getAllPeers() {
-        lock.readLock().lock();
-        try {
-            return peers.values().stream().toList();
         } finally {
             lock.readLock().unlock();
         }
