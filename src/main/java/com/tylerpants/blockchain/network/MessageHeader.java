@@ -1,11 +1,8 @@
-package com.tylerpants.blockchain;
+package com.tylerpants.blockchain.network;
 
 import com.tylerpants.blockchain.util.Utils;
 import lombok.Getter;
 import lombok.Setter;
-
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 @Getter
 @Setter

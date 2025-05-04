@@ -1,8 +1,7 @@
-package com.tylerpants.blockchain.network;
+package com.tylerpants.blockchain.old_network;
 
-import com.tylerpants.blockchain.Block;
-import com.tylerpants.blockchain.MessageException;
-import com.tylerpants.blockchain.MessageHeader;
+import com.tylerpants.blockchain.chain.Block;
+import com.tylerpants.blockchain.network.MessageException;
 import com.tylerpants.blockchain.util.Utils;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -17,8 +16,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 public class NetworkNode {
+
+    private int number; // TEST ONLY
     private static final int DEFAULT_PORT = 8333;
     private static final String NETWORK_MAGIC = "f9beb4d9";
     private static final int MAX_PEERS = 125;
@@ -26,6 +28,7 @@ public class NetworkNode {
     private final String host;
     private final int port;
     private final Map<Socket, PeerInfo> connectedPeers = new ConcurrentHashMap<>();
+    private final Map<PeerAddress, PeerInfo> failedPeers = new ConcurrentHashMap<>();
     private final BlockingQueue<NetworkMessage> messageQueue = new LinkedBlockingQueue<>();
     private final ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(10);
     private ServerSocket serverSocket;
@@ -34,14 +37,15 @@ public class NetworkNode {
     // Храним цепочку блоков (упрощённо)
     private final List<Block> blockchain = Collections.synchronizedList(new ArrayList<>());
 
-    public NetworkNode(String host, int port) {
+    public NetworkNode(int number, String host, int port) {
+        this.number = number;
         this.host = host;
         this.port = port;
     }
 
     public void start() throws IOException {
         serverSocket = new ServerSocket(port, 50, InetAddress.getByName(host));
-        System.out.println("Node started on " + host + " : " + port);
+        System.out.println("["+number+"] Node started on " + host + " : " + port);
 
         // Поток для приёма входящих соединений
         new Thread(this::acceptConnections).start();
@@ -53,20 +57,29 @@ public class NetworkNode {
         new Thread(this::maintainConnections).start();
     }
 
+    public void connectToPeer(String host, int port) throws IOException {
+        if (connectedPeers.size() >= MAX_PEERS) return;
+
+        Socket socket = new Socket(host, port);
+        PeerInfo peer = new PeerInfo(socket);
+        connectedPeers.put(socket, peer);
+        executor.execute(() -> handlePeer(peer));
+    }
+
     private void acceptConnections() {
         while (running) {
             try {
                 Socket peerSocket = serverSocket.accept();
                 if (connectedPeers.size() < MAX_PEERS) {
                     PeerInfo peer = new PeerInfo(peerSocket);
-                    System.out.println("New connection with socket: " + peer.getSocket().getInetAddress());
+                    System.out.println("["+number+"] New connection with socket: " + peer.getSocket().getInetAddress());
                     connectedPeers.put(peerSocket, peer);
                     executor.execute(() -> handlePeer(peer));
                 } else {
                     peerSocket.close();
                 }
             } catch (IOException e) {
-                if (running) System.err.println("Accept error: " + e.getMessage());
+                if (running) System.err.println("["+number+"] Accept error: " + e.getMessage());
             }
         }
     }
@@ -85,8 +98,7 @@ public class NetworkNode {
                 messageQueue.put(new NetworkMessage(peer, message));
             }
         } catch (Exception e) {
-            System.out.println("??????????????????????");
-            System.err.println("Peer handling error: " + e.getMessage());
+            System.err.println("["+number+"] Peer handling error: " + e.getMessage());
         } finally {
             connectedPeers.remove(peer.getSocket());
             try { peer.getSocket().close(); } catch (IOException ignored) {}
@@ -111,14 +123,15 @@ public class NetworkNode {
      */
     private void parseMessage(PeerInfo peer, byte[] data) throws MessageException {
         // Реальная реализация должна разбирать заголовки Bitcoin-сообщений
-        System.out.println("Received message from " + peer.getSocket().getInetAddress() + ": " + Utils.bytesToHex(data));
+        System.out.println("["+number+"] Received message from " + peer.getSocket().getInetAddress() + ": " + Utils.bytesToHex(data));
 
 
         if (verifyMessage(data)) {
             try (OutputStream out = peer.getSocket().getOutputStream()) {
                 MessageHeader header = parseHeader(data);
+                byte[] payload = Arrays.copyOfRange(data, 24, 24 + header.getPayloadLength());
 
-                System.out.println(header);
+                System.out.println("["+number+"]" + header);
                 String command = header.getCommand();
 
                 switch (command) {
@@ -126,26 +139,27 @@ public class NetworkNode {
                         sendVerackMessage(out, peer);
                         break;
                     case "verack":
-                        System.out.println("Verack!");
+                        System.out.println("["+number+"] Verack!");
                         break;
                     case "tx":
                         break;
                     case "ping":
-                        System.out.println("received Ping!");
-                        sendPong(out, peer);
+                        System.out.println("["+number+"] received Ping!");
+                        ByteBuffer pingBuffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
+                        long pingNonce = pingBuffer.getLong();
+                        sendPong(out, peer, pingNonce);
                         break;
                     case "pong":
-                        System.out.println("received Pong!");
+                        System.out.println("["+number+"] received Pong!");
+                        ByteBuffer pongBuffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
+                        long pongNonce = pongBuffer.getLong();
+                        if (pongNonce == peer.getLastPingNonce()) {
+                            peer.updateLastActive();
+                            long pingTime = System.currentTimeMillis() - peer.getLastPingTime();
+                            System.out.println("["+number+"] Ping time: " + pingTime + "ms");
+                        }
                         break;
                 }
-                // Здесь должна быть логика обработки разных типов сообщений:
-                // version, verack, addr, inv, getdata, tx, block и т.д.
-
-                // Здесь должна быть разборка сообщений по типам:
-                // 1. Проверить magic number (f9beb4d9)
-                // 2. Определить тип сообщения (первые 12 байт)
-                // 3. Обработать payload
-
                 //        version → обмен параметрами
                 //        tx  →  передача транзакции
                 //        verack → подтверждение
@@ -156,12 +170,11 @@ public class NetworkNode {
                 //
                 //        inv/getdata → обмен данными
             } catch (IOException e) {
-                System.out.println("!!!!!!!!");;
-                System.err.println("Peer handling error: " + e.getMessage());
+                System.err.println("["+number+"] Peer handling error: " + e.getMessage());
             }
         }
         else {
-            System.err.println("error receiving message");
+            System.err.println("["+number+"] error receiving message");
         }
     }
 
@@ -193,53 +206,6 @@ public class NetworkNode {
 
         return true;
     }
-//    public boolean verifyMessage(byte[] fullMessage) {
-//        // 1. Проверка на null и минимальную длину
-//        if (fullMessage == null || fullMessage.length < 24) {
-//            System.err.println("Invalid message: too short or null");
-//            return false;
-//        }
-//
-//        // 2. Проверка Magic Number
-//        byte[] magic = Arrays.copyOfRange(fullMessage, 0, 4);
-//        if (!Arrays.equals(magic, Utils.hexStringToByteArray(NETWORK_MAGIC))) {
-//            System.err.println("Invalid magic number: " + Utils.bytesToHex(magic));
-//            return false;
-//        }
-//
-//        try {
-//            // 3. Чтение длины payload (little-endian)
-//            int payloadLength = ByteBuffer.wrap(fullMessage, 16, 4)
-//                    .order(ByteOrder.LITTLE_ENDIAN)
-//                    .getInt();
-//
-//            // 5. Проверка общей длины сообщения
-//            if (fullMessage.length != 24 + payloadLength) {
-//                System.err.println("Length mismatch: header=" + fullMessage.length +
-//                        ", expected=" + (24 + payloadLength));
-//                return false;
-//            }
-//
-//            // 6. Извлечение payload
-//            byte[] payload = new byte[payloadLength];
-//            System.arraycopy(fullMessage, 24, payload, 0, payloadLength);
-//
-//            // 7. Проверка контрольной суммы
-//            byte[] receivedChecksum = Arrays.copyOfRange(fullMessage, 20, 24);
-//            byte[] calculatedChecksum = calculateChecksum(payload);
-//
-//            if (!Arrays.equals(receivedChecksum, calculatedChecksum)) {
-//                System.err.println("Checksum mismatch: received=" + Utils.bytesToHex(receivedChecksum) +
-//                        ", calculated=" + Utils.bytesToHex(calculatedChecksum));
-//                return false;
-//            }
-//
-//                return true;
-//        } catch (Exception e) {
-//            System.err.println("Error verifying message: " + e.getMessage());
-//            return false;
-//        }
-//    }
 
     private MessageHeader parseHeader(byte[] data) throws MessageException {
         if (data.length < 24) {
@@ -264,53 +230,121 @@ public class NetworkNode {
     }
 
     private void maintainConnections() {
-        while (running) {
-            try {
-                Thread.sleep(30000);
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
-                // Отправляем ping неактивным пирам
-                connectedPeers.values().stream()
-                        .filter(p -> System.currentTimeMillis() - p.getLastActive() > 60000)
-                        .forEach(p -> {
-                            try {
-                                sendPing(p.getSocket().getOutputStream(), p);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
+        scheduler.scheduleWithFixedDelay(() -> {
+            if (!running || Thread.currentThread().isInterrupted()) {
+                scheduler.shutdown();
+                return;
+            }
 
-                // Подключаемся к новым пирам, если нужно
-                if (connectedPeers.size() < 8) {
+            synchronized (connectedPeers) {
+                // 1. Очистка неактивных соединений
+                connectedPeers.entrySet().removeIf(entry -> {
+                    PeerInfo peer = entry.getValue();
+                    if (System.currentTimeMillis() - peer.getLastActive() > 120_000) {
+                        try {
+                            entry.getKey().close();
+                            System.out.println("["+number+"] Closed inactive connection with " +
+                                    entry.getKey().getInetAddress());
+                        } catch (IOException ignored) {}
+                        return true;
+                    }
+                    return false;
+                });
+
+                // 2. Отправка ping
+                new ArrayList<>(connectedPeers.values()).forEach(peer -> {
+                    if (System.currentTimeMillis() - peer.getLastActive() > 10000) {
+                        try {
+                            sendPing(peer.getSocket().getOutputStream(),peer);
+                        } catch (IOException ignored) {}
+                    }
+                });
+
+                // 3. Поддержание минимума соединений
+                if (connectedPeers.size() < 1) {
+                    System.out.println(number + ": проверка... " );
+
                     connectToKnownPeers();
                 }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            }
+        }, 0, 30, TimeUnit.SECONDS);
+    }
+
+    /**
+     * ПЕРЕДЕЛАТЬ !!!
+     */
+    private void connectToKnownPeers() {
+        if (connectedPeers.size() >= MAX_PEERS) return;
+
+        // Получаем список для подключения с учетом backoff
+        List<PeerAddress> candidates = getBootstrapNodes().stream()
+                .filter(addr -> !isSelf(addr))
+                .filter(addr -> {
+                    PeerInfo existing = findPeerByAddress(addr);
+                    return existing == null || existing.canAttemptReconnect();
+                })
+                .sorted(Comparator.comparingInt(addr -> {
+                            PeerInfo p = findPeerByAddress(addr);
+                            return p != null ? p.getReconnectAttempts() : 0;
+                        }))
+                        .limit(3) // Пробуем не более 3 узлов за раз
+                        .collect(Collectors.toList());
+
+        for (PeerAddress candidate : candidates) {
+            try {
+                PeerInfo existingPeer = findPeerByAddress(candidate);
+                if (existingPeer != null && !existingPeer.canAttemptReconnect()) {
+                    continue;
+                }
+
+                Socket socket = new Socket();
+                socket.connect(new InetSocketAddress(candidate.getHost(), candidate.getPort()), 5000);
+
+                PeerInfo peer = existingPeer != null ? existingPeer : new PeerInfo(socket);
+                peer.resetReconnectAttempts();
+
+                synchronized (connectedPeers) {
+                    connectedPeers.put(socket, peer);
+                }
+
+                executor.execute(() -> handlePeer(peer));
+
+            } catch (IOException e) {
+                PeerInfo peer = findPeerByAddress(candidate);
+                if (peer != null) {
+                    peer.updateReconnectAttempts();
+                } else {
+                    peer = new PeerInfo(null);
+                    peer.updateReconnectAttempts();
+                    // Сохраняем в отдельную коллекцию для последующих попыток
+                    failedPeers.put(candidate, peer);
+                }
+                System.out.println("["+number+"] Connect failed to " + candidate +
+                        ", next attempt in " + (peer.getNextReconnectDelay()/1000) + "s");
             }
         }
     }
 
-    private void connectToKnownPeers() {
-        // Здесь должна быть логика подключения к известным пирам
-        // В реальной реализации используются DNS-семена или сохранённые адреса
-        List<String> bootstrapNodes = List.of(
-                "seed.bitcoin.sipa.be",
-                "dnsseed.bluematt.me",
-                "dnsseed.bitcoin.dashjr.org"
+    private List<PeerAddress> getBootstrapNodes() {
+        return List.of(
+                new PeerAddress("127.0.0.1", 8333),
+                new PeerAddress("127.0.0.1", 8334)
         );
+    }
 
-        // Упрощённо - подключаемся к localhost для теста
-        try {
-            Socket socket = new Socket("127.0.0.1", DEFAULT_PORT);
-//            if (socket.getInetAddress().isLoopbackAddress() && socket.getPort() == this.port) {
-//                socket.close();
-//                return;
-//            }
-            PeerInfo peer = new PeerInfo(socket);
-            connectedPeers.put(socket, peer);
-            executor.execute(() -> handlePeer(peer));
-        } catch (IOException e) {
-            System.err.println("Failed to connect to bootstrap node: " + e.getMessage());
-        }
+    private PeerInfo findPeerByAddress(PeerAddress addr) {
+        return connectedPeers.values().stream()
+                .filter(p -> p.getSocket() != null &&
+                        p.getSocket().getInetAddress().getHostAddress().equals(addr.getHost()) &&
+                        p.getSocket().getPort() == addr.getPort())
+                .findFirst()
+                .orElse(failedPeers.get(addr));
+    }
+
+    private boolean isSelf(PeerAddress addr) {
+        return addr.getHost().equals(this.host) && addr.getPort() == this.port;
     }
 
     public byte[] calculateChecksum(byte[] payload) {
@@ -324,7 +358,7 @@ public class NetworkNode {
             byte[] hash2 = digest.digest(hash1);
             return Arrays.copyOfRange(hash2, 0, 4);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
+            throw new RuntimeException("["+number+"] SHA-256 not available", e);
         }
     }
 
@@ -383,43 +417,27 @@ public class NetworkNode {
         buildMessage(out, command, payload);
     }
 
-
-    private void sendPing(OutputStream out, PeerInfo peer) throws IOException{
+    private void sendPing(OutputStream out, PeerInfo peer) throws IOException {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(stream);
 
         String command = "ping";
+        long nonce = ThreadLocalRandom.current().nextLong();
 
-        dos.writeLong(System.currentTimeMillis());
-
-        // sender IP + port
-        dos.write(peer.getSocket().getLocalAddress().getAddress());
-        dos.write(peer.getSocket().getLocalPort());
-
-        // receiver IP + port
-        dos.write(peer.getSocket().getInetAddress().getAddress());
-        dos.write(peer.getSocket().getPort());
+        dos.writeLong(nonce);
+        peer.setLastPingNonce(nonce);
+        peer.setLastPingTime(System.currentTimeMillis()); // время отправки ping
 
         byte[] payload = stream.toByteArray();
-
         buildMessage(out, command, payload);
     }
 
-    private void sendPong(OutputStream out, PeerInfo peer) throws IOException {
+    private void sendPong(OutputStream out, PeerInfo peer, long nonce) throws IOException {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(stream);
 
         String command = "pong";
-
-        dos.writeLong(System.currentTimeMillis());
-
-        // sender IP + port
-        dos.write(peer.getSocket().getLocalAddress().getAddress());
-        dos.write(peer.getSocket().getLocalPort());
-
-        // receiver IP + port
-        dos.write(peer.getSocket().getInetAddress().getAddress());
-        dos.write(peer.getSocket().getPort());
+        dos.writeLong(nonce);
 
         byte[] payload = stream.toByteArray();
         buildMessage(out, command, payload);
@@ -430,25 +448,12 @@ public class NetworkNode {
         executor.shutdownNow(); // Прерываем все потоки
         try {
             if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                System.err.println("Forced shutdown");
+                System.err.println("["+number+"] Forced shutdown");
             }
             serverSocket.close();
         } catch (Exception e) {
-            System.err.println("Shutdown error: " + e.getMessage());
+            System.err.println("["+number+"] Shutdown error: " + e.getMessage());
         }
-    }
-
-    @Getter
-    @Setter
-    private static class PeerInfo {
-        private final Socket socket;
-        private long lastActive;
-
-        public PeerInfo(Socket socket) {
-            this.socket = socket;
-            this.lastActive = System.currentTimeMillis();
-        }
-
     }
 
     @AllArgsConstructor
@@ -459,11 +464,31 @@ public class NetworkNode {
         private final byte[] data;
     }
 
-    public static void main(String[] args) throws IOException {
-        NetworkNode node = new NetworkNode("0.0.0.0",DEFAULT_PORT);
-        node.start();
+    public static void main(String[] args) {
+
+        // Нода 1 (порт 8333)
+        new Thread(() -> {
+            NetworkNode node1 = new NetworkNode(1,"0.0.0.0", 8333);
+            try {
+                node1.start();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }).start();
+
+        // Нода 2 (порт 8334)
+        new Thread(() -> {
+            NetworkNode node2 = new NetworkNode(2,"0.0.0.0", 8334);
+            try {
+                node2.start();
+                // Подключаемся к первой ноде
+                node2.connectToPeer("127.0.0.1", 8333);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }).start();
 
         // Добавляем shutdown hook для graceful shutdown
-        Runtime.getRuntime().addShutdownHook(new Thread(node::shutdown));
+//        Runtime.getRuntime().addShutdownHook(new Thread(node::shutdown));
     }
 }

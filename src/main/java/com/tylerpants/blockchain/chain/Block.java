@@ -1,4 +1,4 @@
-package com.tylerpants.blockchain;
+package com.tylerpants.blockchain.chain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;

@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tylerpants.blockchain.ECDSA.Message;
 import com.tylerpants.blockchain.ECDSA.Point;
 import com.tylerpants.blockchain.ECDSA.SignatureManager;
+import com.tylerpants.blockchain.chain.Block;
+import com.tylerpants.blockchain.chain.Blockchain;
+import com.tylerpants.blockchain.chain.Operation;
 import com.tylerpants.blockchain.util.Pair;
 import com.tylerpants.blockchain.util.Utils;
 
@@ -13,7 +16,6 @@ import java.io.File;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Scanner;
 
 public class CmdManager {
@@ -30,7 +32,7 @@ public class CmdManager {
     private static String lastHash;
     private static Scanner scanner;
     private static Block currentBlock;
-    private static List<Block> blockChain;
+    private static Blockchain blockChain;
 
     public static void init() {
         scanner = new Scanner(System.in);
@@ -113,7 +115,7 @@ public class CmdManager {
     private static void commitBlock() {
         System.out.println("Started mining block...");
         currentBlock.mineBlock();
-        blockChain.add(currentBlock);
+        blockChain.addBlock(currentBlock);
 
         Block newBlock = new Block(lastHash, new ArrayList<>(3));
         lastHash = newBlock.getHash();
@@ -128,7 +130,7 @@ public class CmdManager {
     }
 
     private static void print() {
-        for (Block block : blockChain) {
+        for (Block block : blockChain.allBlocks()) {
             System.out.println("-------------------------------------------------------------------------");
             System.out.println("| Hash: " + block.getHash());
             System.out.println("| Previous hash: " + block.getPrevHash());

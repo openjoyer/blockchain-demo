@@ -2,6 +2,7 @@ package com.tylerpants.blockchain.ECDSA;
 
 import com.tylerpants.blockchain.util.Pair;
 import com.tylerpants.blockchain.util.Utils;
+import lombok.Getter;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -9,7 +10,9 @@ import java.util.List;
 
 public class Point {
 
+    @Getter
     private final BigInteger x;
+    @Getter
     private final BigInteger y;
     private final CurveConfig curveConfig;
 
@@ -28,7 +31,8 @@ public class Point {
         }
 
         this.x = x;
-        this.y = y;}
+        this.y = y;
+    }
 
     public boolean isEqualTo(Point point) {
         return this.x.equals(point.getX()) && (this.y.equals(point.getY()));
@@ -101,13 +105,5 @@ public class Point {
     @Override
     public String toString() {
         return "("+x+", "+y+")";
-    }
-
-    public BigInteger getX() {
-        return x;
-    }
-
-    public BigInteger getY() {
-        return y;
     }
 }
