@@ -19,18 +19,13 @@ public class PeerManager {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     private static final String PATH = "src/main/resources/peers.dat";
+    private static final String HARDCODED_PEERS_PATH = "src/main/resources/hardcoded-peers.txt";
 
-    private static final List<InetSocketAddress> HARDCODED_PEERS = Arrays.asList(
-//            new InetSocketAddress("203.0.113.1", 8333),  // нода 1
-//            new InetSocketAddress("203.0.113.2", 8333),  // нода 2
-//            new InetSocketAddress("198.51.100.5", 8333)  // Резервная нода
-            new InetSocketAddress("192.168.68.117", 8333)
-    );
+    private static List<PeerRecord> hardcodedPeers;
 
     public PeerManager(String dataDir) throws IOException {
         this.peersFile = Paths.get(dataDir, "peers.dat");
 
-        saveHardcodedPeers();
         loadPeers();
         startAutoSaver();
     }
@@ -48,7 +43,7 @@ public class PeerManager {
         List<PeerRecord> peers = new ArrayList<>();
 
         // 1. Сначала hardcoded пиры
-        peers.addAll(HARDCODED_PEERS.stream()
+        peers.addAll(hardcodedPeers.stream()
                 .map(p -> new PeerRecord(p.getAddress().getAddress(), p.getPort(), System.currentTimeMillis(), 100, "hardcoded"))
                 .toList());
 
@@ -70,11 +65,28 @@ public class PeerManager {
         }
     }
 
+    private List<PeerRecord> getHardcodedPeersFromFile() throws IOException {
+        List<PeerRecord> list = new ArrayList<>();
+        BufferedReader  reader = new BufferedReader(new FileReader(HARDCODED_PEERS_PATH));
+        while (reader.ready()) {
+            String[] s = reader.readLine().split(":");
+            String ip = s[0];
+            int port = Integer.parseInt(s[1]);
+            InetSocketAddress i = new InetSocketAddress(ip, port);
+
+            PeerRecord peer = new PeerRecord(i.getAddress().getAddress(), port, System.currentTimeMillis(), 100, "hardcoded");
+            list.add(peer);
+        }
+        return list;
+    }
+
     private void saveHardcodedPeers() {
-        HARDCODED_PEERS.forEach(peer -> addPeer(peer.getAddress(), peer.getPort(), "hardcoded"));
+        hardcodedPeers.forEach(peer -> addPeer(peer.getAddress(), peer.getPort(), "hardcoded"));
     }
 
     private void loadPeers() throws IOException {
+        hardcodedPeers = getHardcodedPeersFromFile();
+
         lock.writeLock().lock();
         try {
             if (!Files.exists(peersFile)) {
