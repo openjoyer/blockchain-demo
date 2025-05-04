@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+/src/main/resources/hardcoded-peers.txt
+/src/main/resources/peers.dat
